@@ -1,5 +1,6 @@
 {
     "acquisition":"brainflow",
+
     "acq_args":{
         "board_id":0,
         "serial_port":"com3"
@@ -7,7 +8,7 @@
 
     "decoder":"mindaffectBCI.decoder.decoder",
     "decoder_args":{
-        "stopband" : [[45,65],[5,25,"bandpass"]],
+        "stopband" : [[45,65],[3,35,"bandpass"]],
         "out_fs" : 100,
         "evtlabs" : ["re","fe"],
         "tau_ms" : 450,
@@ -17,11 +18,11 @@
 
     "presentation":"selectionMatrix",
     "presentation_args":{
-        "ncal":10,
-        "npred":10,
+        "ncal":20,
+        "npred":20,
         "selectionThreshold":0.1,
         "symbols":"symbols.txt",
-        "calibration_symbols":[["0","1","2"],["3","4","5"],["6","7","8"]],
+        "calibration_symbols":"symbols.txt",
         "stimfile":"mgold_65_6532_psk_60hz.png",
         "framesperbit":1,
         "fullscreen":false,

@@ -94,7 +94,7 @@ class UtopiaController:
         '''get a (relative) wall-time stamp *in milliseconds*'''
         return self.client.getTimeStamp()
         
-    def autoconnect(self, host=None, port=8400, timeout_ms=5000, 
+    def autoconnect(self, host=None, port=0, timeout_ms=5000, 
                     localhostifhostnotfound=True, queryifhostnotfound=True, scanifhostnotfound=False):
         """[summary]
 
@@ -365,6 +365,7 @@ def newMessageHandler(msgs):
 if __name__ == "__main__":
     # simple message logging testcase
     uc = UtopiaController()
+    print('before')
     uc.autoconnect()
     # add logging incomming message handler
     uc.addMessageHandler(newMessageHandler)

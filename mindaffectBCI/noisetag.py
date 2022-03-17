@@ -700,7 +700,7 @@ class Noisetag:
         self.objIDs=None
         self.clientid=clientid
 
-    def connect(self,host:str=None,port:int=-1,queryifhostnotfound:bool=True,timeout_ms:int=5000):
+    def connect(self,host:str=None,port:int=0,queryifhostnotfound:bool=True,timeout_ms:int=5000):
         """connect to the utopia hub
 
         Args:

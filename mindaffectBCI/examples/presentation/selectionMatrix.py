@@ -36,6 +36,31 @@ nframe = None
 isi = 1/60
 drawrate = 0  # rate at which draw is called
 
+# NLP
+import numpy as np
+from keras.models import load_model
+import ast 
+import pickle
+import heapq
+
+curr_name = 'autoc2.h5'
+curr_path = os.path.join(r'C:\Users\bluet\Desktop\PredictiveEEG\pymindaffectBCI-open_source\mindaffectBCI\examples\presentation\model', curr_name)
+
+autocurr = load_model(curr_path)
+
+next_name = 'next_sugg.h5'
+next_path = os.path.join(r'C:\Users\bluet\Desktop\PredictiveEEG\pymindaffectBCI-open_source\mindaffectBCI\examples\presentation\model', next_name)
+
+autonext = load_model(next_path)
+
+dict_name = 'dict.txt'
+dict_path = os.path.join(r'C:\Users\bluet\Desktop\PredictiveEEG\pymindaffectBCI-open_source\mindaffectBCI\examples\presentation\model', dict_name)
+
+indices_name = 'char_dict.txt'
+indices_path = os.path.join(r'C:\Users\bluet\Desktop\PredictiveEEG\pymindaffectBCI-open_source\mindaffectBCI\examples\presentation\model', indices_name)
+
+
+
 class Screen:
 
     '''Screen abstract-class which draws stuff on the screen until finished'''
@@ -787,19 +812,166 @@ class SelectionGridScreen(Screen):
                 if self.show_correct and self.last_target_idx>=0:
                     text += "*" if symbIdx==self.last_target_idx else "_"
                 self.set_sentence( text )
+    
+    def run_autocurr(self, msg):
+        '''
+        Prediction with single letter
+        '''
+        with open(indices_path, 'r', encoding='utf-8') as f:
+            char_dict = f.read()
+            char_dict = ast.literal_eval(char_dict)
+
+        AMT = 5
+
+        if len(msg) < AMT:
+            n = AMT - len(msg)
+            msg = n*' ' + msg
+
+        msg_ = msg[:AMT].lower()
+
+        indices_char = dict((j, i) for i, j in char_dict.items())
+
+        def prepare_input(text):
+            x = np.zeros((1, AMT, len(char_dict)))
+            for t, char in enumerate(text):
+                x[0, t, char_dict[char]] = 1.
+            return x
+
+        def sample(preds, top_n=3):
+            preds = np.asarray(preds).astype('float64')
+            preds = np.log(preds)
+            exp_preds = np.exp(preds)
+            preds = exp_preds / np.sum(exp_preds)
+
+            return heapq.nlargest(top_n, range(len(preds)), preds.take)
+
+        def predict_completion(text):
+            original_text = text
+            generated = text
+            completion = ''
+
+            repeated = []
+            while True:
+                x = prepare_input(text)
+                preds = autocurr.predict(x, verbose=0)[0]
+                next_index = sample(preds, top_n=1)[0]
+                next_char = indices_char[next_index]
+
+                repeated.append(next_char)
+                if len(repeated) == 3 and repeated.count(repeated[0]) == len(repeated):
+                    return
+
+                text = text[1:] + next_char
+                completion += next_char
+                
+                if len(original_text + completion) + 2 > len(original_text) and next_char == ' ':
+                    return completion
+
+        def predict_completions(text, n=3):
+            x = prepare_input(text)
+            preds = autocurr.predict(x, verbose=0)[0]
+            next_indices = sample(preds, n)
+            try:
+                return [indices_char[idx] + predict_completion(text[1:] + indices_char[idx]) for idx in next_indices]
+            except:
+                pass
+
+
+        result = predict_completions(msg_, 5)
+
+        new_set = self.symbols
+
+        if result is not None:
+            for i, char in enumerate(result):
+                if new_set[0][i] == " ":
+                    new_set[0][i] = char
+                    print('CHAR------------', char)
+                
+        
+        self.reset()
+        self.set_grid(symbols=new_set, bgFraction=.05)
+                
+    def run_autonext(self, msg):
+        '''
+        Input screen text into NLP model to predict new text
+
+        Precondition: Model is loaded up and text is at its original form
+        Postcondition: Input preprocessing and prediction is executed
+        Return: prediction 
+        '''
+        text = msg.lower().strip()
+
+        with open(dict_path, 'r') as f:
+            unique_word_index = f.read()
+            unique_word_index = ast.literal_eval(unique_word_index)
+
+            print(unique_word_index)
+
+        x = np.zeros((1, 5, 8467))
+        for t, word in enumerate(text.split()):
+            print(word)
+
+            if word not in unique_word_index.keys():
+                return
+            x[0, t, unique_word_index[word]] = 1
+
+        indices_word = dict((v, k) for k, v in unique_word_index.items())
+
+        pred = autonext.predict(x, verbose=0)[0]
+
+        poss = np.argpartition(pred, -5)[-5:]
+        
+        """
+        Autoprediction GUI
+        """
+        new_set = self.symbols
+
+        for i, indices in enumerate(poss):
+            pred = indices_word[indices]
+
+            if new_set[0][i] == " ":
+                new_set[0][i] = pred
+
+            if pred == "fuckin":
+                new_set[0][i] = " "
+
+
+        # for i in range(len(new_set[0])):
+        #     if new_set[0][i] == " ":
+        #         new_set[0][i] = gen
+
+        print('NEW---------', new_set)
+
+        self.reset()
+        self.set_grid(symbols=new_set, bgFraction=.05)
+ 
 
     def update_text(self,text:str,sel:str):
         # process special codes
         if sel in ('<-','<bkspc>','<backspace>'):
             text = text[:-1]
         elif sel in ('spc','<space>','<spc>'):
-            text = text + '😀'
+            text = text + ' '
         elif sel in ('home','quit'):
             pass
         elif sel == ':)':
             text = text + ""
         else:
             text = text + sel
+
+        # Start prediction process
+        # print('TEXT:-------------------' + text + '-----------------------')
+        try:
+            if text[-1] == " " and len(text) > 0:
+                self.run_autonext(text)
+            else:
+                self.run_autocurr(text)
+        except:
+            pass
+
+        # print('PREDICTION:-------------------' + pred + '-----------------------')
+        # text += pred
+
         return text
 
     def set_sentence(self, text):
@@ -865,6 +1037,7 @@ class SelectionGridScreen(Screen):
             for j in range(len(symbols[i])): # cols
                 # skip unused positions
                 if symbols[i][j] is None or symbols[i][j]=="": continue
+
                 idx = idx+1
                 symb = symbols[i][j]
                 x = j/gridwidth*winw # left-edge cell
@@ -875,8 +1048,11 @@ class SelectionGridScreen(Screen):
                 except :
                     # create a 1x1 white image for this grid cell
                     img = pyglet.image.SolidColorImagePattern(color=(255, 255, 255, 255)).create_image(2, 2)
+
+                    
                 # convert to a sprite (for fast re-draw) and store in objects list
                 # and add to the drawing batch (as background)
+
                 self.objects[idx]=pyglet.sprite.Sprite(img, x=x+bgoffsetx, y=y+bgoffsety,
                                                     batch=self.batch, group=self.background)
                 # re-scale (on GPU) to the size of this grid cell
@@ -889,12 +1065,33 @@ class SelectionGridScreen(Screen):
                                                 anchor_x='center', anchor_y='center',
                                                 batch=self.batch, group=self.foreground)
 
+                # print('----------------------', repr(symb))
+                # if symb == " ":
+                #     print('------------------------------------TRUE')
+                #     self.objects[idx]=pyglet.sprite.Sprite(img, x=x-bgoffsetx, y=y+bgoffsety,
+                #                                         batch=self.batch, group=self.background)
+                #     # re-scale (on GPU) to the size of this grid cell
+                #     self.objects[idx].update(scale_x=int(w-bgoffsetx*2),
+                #                             scale_y=int(h-bgoffsety*2)/img.height)
+                # else:
+                #     self.objects[idx]=pyglet.sprite.Sprite(img, x=x+.5, y=y+.5,
+                #                                         batch=self.batch, group=self.background)
+                #     # re-scale (on GPU) to the size of this grid cell
+                #     self.objects[idx].update(scale_x=int(w-.5*2)/img.width,
+                #                             scale_y=int(h-.5*2)/img.height)
+
+                # # add the foreground label for this cell, and add to drawing batch
+                # self.labels[idx]=pyglet.text.Label(symb, font_size=32, x=x+w/2, y=y+h/2,
+                #                                 color=(255, 255, 255, 255),
+                #                                 anchor_x='center', anchor_y='center',
+                #                                 batch=self.batch, group=self.foreground)
+
         # add opto-sensor block
         img = pyglet.image.SolidColorImagePattern(color=(255, 255, 255, 255)).create_image(1, 1)
         self.opto_sprite=pyglet.sprite.Sprite(img, x=0, y=winh*.9,
                                               batch=self.batch, group=self.background)
         self.opto_sprite.update(scale_x=int(winw*.1), scale_y=int(winh*.1))
-        self.opto_sprite.visible=False
+        self.opto_sprite.visible=True
 
         # add the sentence box
         y = winh # top-edge cell
@@ -1006,6 +1203,13 @@ class SelectionGridScreen(Screen):
         if self.liveFeedback:
             # get prediction info if any
             predMessage=self.noisetag.getLastPrediction()
+            
+            if predMessage is not None:
+                print('PREDMSG', chr(predMessage.msgID))
+
+                # y = autosugg.predict([predMessage])
+                # print('PREDICTION', y)
+
             if predMessage and predMessage.Yest in objIDs and predMessage.Perr < self.feedbackThreshold:
                 predidx=objIDs.index(predMessage.Yest) # convert from objID -> objects index
                 prederr=predMessage.Perr
@@ -1503,6 +1707,7 @@ def load_symbols(fn):
             # add
             symbols.append(line)
 
+    print("ARRAY:--------------------", symbols)
     return symbols
 
 def run(symbols=None, ncal:int=10, npred:int=10, calibration_trialduration=4.2,  prediction_trialduration=20, feedbackduration:float=2, stimfile=None, selectionThreshold:float=.1,
@@ -1589,8 +1794,12 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
+    # temp_symb = [['a', 'b'],
+    #             ['c', 'd']]
+
     setattr(args,'symbols',[['yes','no','<-']])
     setattr(args,'extra_symbols',['3x3.txt','robot_control.txt'])
 
+    # print('temp_symb')
     run(**vars(args))
 
