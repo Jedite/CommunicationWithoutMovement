@@ -1,7 +1,7 @@
 # Communication Without Movement: EEG Text Generation/Autosuggestion with Natural Language Processing in the Immobilized
 
-## * Revised version of MindAffect
-## * Incorporates NLP Autosuggestion
+## Revised version of MindAffect
+## Incorporates NLP Autosuggestion
 
 
 
